@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Note Learner">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f6f3ee">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Note Learner</title>
+<style>
+  :root {
+    --bg: #f6f3ee; --fg: #1d1b19; --paper: #fffdf8; --ink: #111;
+    --btn: #ebe6dd; --btn-active: #d9d2c4; --seg: #ffffff;
+    --ok: #2e9e5b; --bad: #d64545;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161513; --fg: #f1ede6; --btn: #34312e; --btn-active: #48443f; --seg: #4a4642; }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+  .app { display: flex; flex-direction: column; height: 100%; max-width: 560px; margin: 0 auto;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); gap: 16px; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; background: var(--btn); border-radius: 12px; padding: 4px; }
+  .modes button { border: 0; background: transparent; color: var(--fg); font-size: 17px; font-weight: 600;
+    padding: 10px; border-radius: 9px; }
+  .modes button[aria-pressed=true] { background: var(--seg); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+
+  /* The staff always sits on "paper" with black ink, like printed sheet music. */
+  .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--paper); border-radius: 18px; border: 3px solid transparent;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12); transition: border-color .12s; padding: 8px; }
+  .stage.ok { border-color: var(--ok); }
+  .stage.bad { border-color: var(--bad); }
+  #score { width: 100%; }
+  #score svg { display: block; width: 100%; height: auto; }
+
+  .keys { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+  .keys button { border: 0; border-radius: 14px; background: var(--btn); color: var(--fg);
+    font-size: 26px; font-weight: 700; padding: 22px 0; }
+  .keys button:active { background: var(--btn-active); }
+  @media (max-width: 380px) { .keys button { font-size: 22px; padding: 18px 0; } .keys { gap: 5px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="modes" role="group" aria-label="Clef">
+    <button id="m-treble" aria-pressed="true">Treble</button>
+    <button id="m-bass" aria-pressed="false">Bass</button>
+  </div>
+  <div class="stage" id="stage"><div id="score" aria-label="Staff"></div></div>
+  <div class="keys" id="keys"></div>
+</div>
+
+<script src="vendor/vexflow.js"></script>
+<script>
+const { Renderer, Stave, StaveNote, Voice, Formatter } = Vex.Flow;
+const LETTERS = ['C','D','E','F','G','A','B'];
+
+// Diatonic number n = octave*7 + letterIndex. Ranges include a few ledger-line notes.
+const CLEFS = {
+  treble: { lo: 4*7+0 /* C4 */, hi: 5*7+5 /* A5 */ },
+  bass:   { lo: 2*7+2 /* E2 */, hi: 4*7+0 /* C4 */ },
+};
+
+// Drawing area (VexFlow units). Staff lines sit at y = 40..80 for a stave at y = 0.
+const STAVE_W = 140, VIEW = { x: 0, y: 0, w: STAVE_W + 2, h: 120 };
+const STAVE_Y = 10;
+
+let mode = 'treble', note = null, locked = false;
+try { mode = localStorage.getItem('mode') === 'bass' ? 'bass' : 'treble'; } catch (e) {}
+
+const $ = id => document.getElementById(id);
+const stage = $('stage'), score = $('score');
+
+function keyFor(n) { return LETTERS[n % 7].toLowerCase() + '/' + Math.floor(n / 7); }
+
+function draw(color) {
+  score.replaceChildren();
+  const renderer = new Renderer(score, Renderer.Backends.SVG);
+  renderer.resize(VIEW.w, VIEW.h);
+  const ctx = renderer.getContext();
+
+  const stave = new Stave(1, STAVE_Y, STAVE_W);
+  stave.addClef(mode);
+  stave.setContext(ctx).draw();
+
+  const sn = new StaveNote({ keys: [keyFor(note)], duration: 'q', clef: mode, auto_stem: true });
+  if (color) sn.setStyle({ fillStyle: color, strokeStyle: color });
+
+  const voice = new Voice({ num_beats: 1, beat_value: 4 }).addTickables([sn]);
+  new Formatter().joinVoices([voice]).format([voice], 0);
+  // Center the note in the space after the clef.
+  const room = stave.getNoteEndX() - stave.getNoteStartX();
+  sn.setXShift(room / 2 - 18);
+  voice.draw(ctx, stave);
+
+  // Make the SVG scale to the card width.
+  const svg = score.querySelector('svg');
+  svg.setAttribute('viewBox', `${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}`);
+  svg.removeAttribute('width'); svg.removeAttribute('height');
+  svg.style.width = '100%'; svg.style.height = 'auto';
+}
+
+function nextNote() {
+  const c = CLEFS[mode];
+  let n;
+  do { n = c.lo + Math.floor(Math.random() * (c.hi - c.lo + 1)); } while (n === note);
+  note = n;
+  draw();
+}
+
+let flashTimer;
+function flash(cls) {
+  clearTimeout(flashTimer);
+  stage.classList.remove('ok', 'bad');
+  void stage.offsetWidth;
+  stage.classList.add(cls);
+  flashTimer = setTimeout(() => stage.classList.remove(cls), 350);
+}
+
+function answer(letter) {
+  if (locked) return;
+  if (LETTERS[note % 7] === letter) {
+    locked = true; flash('ok'); draw('#2e9e5b');
+    setTimeout(() => { nextNote(); locked = false; }, 300);
+  } else {
+    flash('bad'); draw('#d64545');
+    const shown = note;
+    setTimeout(() => { if (note === shown && !locked) draw(); }, 350);
+  }
+}
+
+function setMode(m) {
+  mode = m;
+  try { localStorage.setItem('mode', m); } catch (e) {}
+  $('m-treble').setAttribute('aria-pressed', m === 'treble');
+  $('m-bass').setAttribute('aria-pressed', m === 'bass');
+  note = null; locked = false; nextNote();
+}
+
+for (const l of ['A','B','C','D','E','F','G']) {
+  const b = document.createElement('button');
+  b.textContent = l;
+  b.addEventListener('pointerdown', e => { e.preventDefault(); answer(l); });
+  $('keys').append(b);
+}
+$('m-treble').onclick = () => setMode('treble');
+$('m-bass').onclick = () => setMode('bass');
+
+setMode(mode);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "name": "Note Learner",
+  "short_name": "Notes",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6f3ee",
+  "theme_color": "#f6f3ee",
+  "icons": [{ "src": "icon.png", "sizes": "180x180", "type": "image/png" }]
+}

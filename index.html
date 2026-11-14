@@ -23,9 +23,12 @@
     --ok: #43c47a; --bad: #ef6a6a;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+  /* The app is one fixed screen: no page scrolling, no iOS rubber-band bounce, no pinch-zoom. */
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none;
+    background: var(--bg); color: var(--fg);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-    -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
+  body { position: fixed; inset: 0; width: 100%; }
   .app { display: flex; flex-direction: column; height: 100%; max-width: 560px; margin: 0 auto;
     padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)); gap: 12px; }
   .top { display: flex; gap: 10px; }
@@ -34,26 +37,32 @@
     padding: 10px 4px; border-radius: 9px; }
   .modes button[aria-pressed=true] { background: var(--seg); box-shadow: 0 1px 3px rgba(0,0,0,.18); }
   .top { position: relative; }
-  #settings-btn { border: 0; background: var(--btn); color: var(--fg); border-radius: 12px; width: 48px;
-    display: flex; align-items: center; justify-content: center; padding: 0; }
-  #settings-btn:active, #settings-btn[aria-expanded=true] { background: var(--btn-active); }
-  #settings-btn svg { width: 22px; height: 22px; }
+  .slot { flex: none; width: 48px; }   /* reserves the button's space so the tabs never resize */
 
-  /* Small settings window that drops down from the button. */
-  .panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 10; width: min(320px, 100%);
-    background: var(--paper); color: var(--fg); border-radius: 16px; padding: 4px 16px;
+  /* One element: the options button when closed, which grows in place into the settings window. */
+  .menu { position: absolute; top: 0; right: 0; z-index: 10; width: 48px; height: 100%; overflow: hidden;
+    background: var(--btn); color: var(--fg); border-radius: 12px;
+    transition: width .28s cubic-bezier(.3,.8,.3,1), height .28s cubic-bezier(.3,.8,.3,1),
+                border-radius .28s, background .2s, box-shadow .28s; }
+  .menu:not(.open):active { background: var(--btn-active); }
+  .menu.open { width: 112px; height: 60px; border-radius: 18px; background: var(--paper);
     box-shadow: 0 8px 28px rgba(0,0,0,.25), 0 0 0 1px rgba(128,128,128,.18); }
-  .panel[hidden] { display: none; }
-  .panel .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; }
-  .panel .row + .row { border-top: 1px solid rgba(128,128,128,.25); }
-  .panel .label { font-size: 16px; font-weight: 600; }
-  .panel .hint { display: block; margin-top: 2px; font-size: 13px; font-weight: 400; opacity: .65; }
-  .switch { position: relative; flex: none; width: 52px; height: 32px; border: 0; border-radius: 16px;
-    background: var(--btn-active); transition: background .15s; padding: 0; }
-  .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
-    background: var(--fg); transition: transform .15s, background .15s; }
-  .switch[aria-checked=true] { background: var(--fg); }
-  .switch[aria-checked=true]::after { background: var(--bg); transform: translateX(20px); }
+  #settings-btn { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; padding: 0; background: transparent;
+    color: inherit; display: flex; align-items: center; justify-content: center; transition: opacity .12s; }
+  #settings-btn svg { width: 22px; height: 22px; }
+  .menu.open #settings-btn { opacity: 0; pointer-events: none; }
+
+  /* The toggles: slim symbols. Filled = on, outlined (and a little fainter) = off. */
+  .panel { position: absolute; top: 0; right: 0; width: 112px; height: 60px; display: flex; align-items: center;
+    justify-content: center; gap: 8px; opacity: 0; visibility: hidden; transition: opacity .12s, visibility 0s .12s; }
+  .menu.open .panel { opacity: 1; visibility: visible; transition: opacity .2s .1s, visibility 0s; }
+  .tile { width: 44px; height: 44px; border: 0; border-radius: 12px; padding: 0; background: var(--btn); color: var(--fg);
+    display: flex; align-items: center; justify-content: center; transition: background .15s; }
+  .tile:active { background: var(--btn-active); }
+  .tile svg { width: 26px; height: 26px; transition: opacity .15s; }
+  .tile[aria-pressed=false] svg { opacity: .55; }
+  .tile .fillable { fill: none; transition: fill .15s; }
+  .tile[aria-pressed=true] .fillable { fill: currentColor; }
 
   .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
     background: var(--paper); border-radius: 18px; border: 3px solid transparent;
@@ -88,20 +97,29 @@
       <button id="m-bass" aria-pressed="false">Bass</button>
       <button id="m-grand" aria-pressed="false">Both</button>
     </div>
-    <button id="settings-btn" aria-label="Settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="panel">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-        <path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>
-      </svg>
-    </button>
-    <div class="panel" id="panel" role="dialog" aria-label="Settings" hidden>
-      <div class="row">
-        <span class="label" id="dark-label">Dark mode</span>
-        <button class="switch" id="dark" role="switch" aria-checked="false" aria-labelledby="dark-label"></button>
-      </div>
-      <div class="row">
-        <span class="label" id="extras-label">Extra high &amp; low notes
-          <span class="hint" id="extras-hint"></span></span>
-        <button class="switch" id="extras" role="switch" aria-checked="true" aria-labelledby="extras-label"></button>
+    <div class="slot"></div>
+    <div class="menu" id="menu">
+      <button id="settings-btn" aria-label="Options" aria-expanded="false" aria-controls="panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>
+        </svg>
+      </button>
+      <div class="panel" id="panel" role="group" aria-label="Options">
+        <!-- Dark mode: a crescent moon -->
+        <button class="tile" id="dark" aria-pressed="false" aria-label="Dark mode" title="Dark mode">
+          <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true">
+            <path class="fillable" d="M19.5 14.6A8 8 0 0 1 9.4 4.5a8 8 0 1 0 10.1 10.1z"/>
+          </svg>
+        </button>
+        <!-- Extra high & low notes: a note on a ledger line above and below a staff line -->
+        <button class="tile" id="extras" aria-pressed="true" aria-label="Extra high and low notes" title="Extra high and low notes">
+          <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+            <path d="M3 12h18" stroke-width="1.2" opacity=".6"/>
+            <path d="M6.5 5.2h11M6.5 18.8h11"/>
+            <ellipse class="fillable" cx="12" cy="5.2" rx="3.4" ry="2.4" transform="rotate(-20 12 5.2)"/>
+            <ellipse class="fillable" cx="12" cy="18.8" rx="3.4" ry="2.4" transform="rotate(-20 12 18.8)"/>
+          </svg>
+        </button>
       </div>
     </div>
   </div>
@@ -259,15 +277,14 @@ function setMode(m) {
 
 function setExtras(on, save) {
   extras = on;
-  $('extras').setAttribute('aria-checked', on);
-  $('extras-hint').textContent = on ? 'Up to 4 ledger lines' : 'Staff + 1 ledger line';
+  $('extras').setAttribute('aria-pressed', on);
   if (save) try { localStorage.setItem('extras', on ? 'on' : 'off'); } catch (e) {}
   if (save) { locked = false; nextNote(); }   // the current note may no longer be allowed
 }
 
 function setTheme(t, save) {
   document.documentElement.dataset.theme = t;
-  $('dark').setAttribute('aria-checked', t === 'dark');
+  $('dark').setAttribute('aria-pressed', t === 'dark');
   document.querySelector('meta[name=theme-color]').setAttribute('content', cssVar('--bg'));
   if (save) try { localStorage.setItem('theme', t); } catch (e) {}
   if (note !== null) draw();
@@ -283,17 +300,29 @@ for (const k of Object.keys(CLEFS)) $('m-' + k).onclick = () => setMode(k);
 $('dark').onclick = () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true);
 $('extras').onclick = () => setExtras(!extras, true);
 
-// Settings window: opens from the button, closes on outside tap, Escape, or the button again.
-const panel = $('panel'), settingsBtn = $('settings-btn');
+// Options: the button grows into the settings window; tap outside or press Escape to fold it back.
+const menu = $('menu'), settingsBtn = $('settings-btn');
+const isOpen = () => menu.classList.contains('open');
 function setPanel(open) {
-  panel.hidden = !open;
+  menu.classList.toggle('open', open);
   settingsBtn.setAttribute('aria-expanded', open);
 }
-settingsBtn.onclick = () => setPanel(panel.hidden);
+settingsBtn.onclick = () => setPanel(true);
+// A tap outside only closes the window; it doesn't also press whatever was underneath.
 document.addEventListener('pointerdown', e => {
-  if (!panel.hidden && !panel.contains(e.target) && !settingsBtn.contains(e.target)) setPanel(false);
-});
+  if (!isOpen() || menu.contains(e.target)) return;
+  e.preventDefault(); e.stopPropagation(); setPanel(false);
+  const eat = ev => { ev.preventDefault(); ev.stopPropagation(); };
+  document.addEventListener('click', eat, { capture: true, once: true });
+  setTimeout(() => document.removeEventListener('click', eat, true), 400);
+}, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') setPanel(false); });
+
+// Belt and braces for iOS Safari: swallow drags and pinch gestures so nothing can scroll or zoom.
+const stop = e => e.preventDefault();
+document.addEventListener('touchmove', stop, { passive: false });
+document.addEventListener('wheel', stop, { passive: false });
+for (const g of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(g, stop);
 
 setTheme(document.documentElement.dataset.theme, false);
 setExtras(extras, false);

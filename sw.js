@@ -1,6 +1,6 @@
 // Network-first: always get the latest when online, fall back to cache offline.
 const CACHE = 'note-learner-v3';
-const FILES = ['./', './index.html', './manifest.webmanifest', './icon.png', './vendor/vexflow.js'];
+const FILES = ['./', './index.html', './manifest.webmanifest', './icon.png', './icon-512.png', './vendor/vexflow.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
